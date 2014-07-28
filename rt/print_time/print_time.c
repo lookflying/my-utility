@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <time.h>
-/*#include <sys/time.h>*/
 
 unsigned long long ts_to_ull(struct timespec *t)
 {
