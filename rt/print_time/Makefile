@@ -8,3 +8,6 @@ ${OBJ} : %.o: %.c
 
 clean:
 	rm -rf *.o
+
+install:
+	cp print_time /usr/bin	
