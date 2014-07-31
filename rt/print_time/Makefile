@@ -11,4 +11,7 @@ clean:
 	rm -rf *.o
 
 install:
-	cp print_time /usr/bin	
+	cp print_time /usr/bin
+
+uninstall:
+	rm  /usr/bin/print_time

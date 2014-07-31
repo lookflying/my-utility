@@ -4,3 +4,5 @@ clean:
 	rm -rf *.o size
 install:
 	cp size /usr/bin
+uninstall:
+	rm  /usr/bin/size

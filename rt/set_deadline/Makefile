@@ -4,3 +4,5 @@ clean:
 	rm -rf *.o set_deadline
 install:
 	cp set_deadline /usr/bin
+uninstall:
+	rm  /usr/bin/set_deadline
