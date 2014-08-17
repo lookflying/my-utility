@@ -5,7 +5,7 @@
 #include <sys/time.h>
 
 
-#define USECREQ 250
+#define USECREQ 10
 #define LOOPS   1000
 
 void event_handler (int signum)
