@@ -112,15 +112,16 @@ static inline struct timespec busy_wait(struct timespec *to)
 		}
 	}
 }
-static inline void print_log(struct timespec *start, struct timespec *end, struct timespec *diff, struct timespec *remaining, struct timespec *deadline)
+static inline void print_log(struct timespec *start, struct timespec *end, struct timespec *diff, struct timespec *remaining, struct timespec *deadline, struct timespec *slack)
 {
-	int64_t i_start, i_end, i_diff, i_remaining, i_deadline;
+	int64_t i_start, i_end, i_diff, i_remaining, i_deadline, i_slack;
 	i_start = timespec_to_nsec(start);
 	i_end = timespec_to_nsec(end);
 	i_diff = timespec_to_nsec(diff);
 	i_remaining = timespec_to_nsec(remaining);
 	i_deadline = timespec_to_nsec(deadline);
-	printf("%lld\t%lld\t%lld\t%lld\t%lld\n", i_start, i_end, i_diff, i_remaining, i_deadline);
+	i_slack = timespec_to_nsec(slack);
+	printf("%lld\t%lld\t%lld\t%lld\t%lld\t%lld\n", i_start, i_end, i_diff, i_remaining, i_deadline, i_slack);
 }
 
 int main(int argc, char* argv[])
@@ -187,8 +188,8 @@ int main(int argc, char* argv[])
 			clock_gettime(CLOCK_REALTIME, &t_end);
 
 			t_diff = timespec_sub(&t_end, &t_start);
-
-			print_log(&t_start, &t_end, &t_diff, &t_remaining, &t_deadline);
+			t_slack = timespec_sub(&t_deadline, &t_end);
+			print_log(&t_start, &t_end, &t_diff, &t_remaining, &t_deadline, &t_slack);
 
 			t_deadline = timespec_add(&t_deadline, &dl_period);
 			t_sleep = timespec_add(&t_deadline, &dl_period);
