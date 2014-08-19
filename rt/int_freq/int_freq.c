@@ -25,7 +25,7 @@ void event_handler (int signum)
 		unsigned long long udiff = (diff.tv_sec * 1000000) + diff.tv_usec;
 		double delta = (double)(udiff/cnt)/1000000;
 		int hz = (unsigned)(1.0/delta);
-		printf ("kernel timer interrupt frequency is approx. %d Hz", hz);
+		printf ("kernel timer interrupt frequency is approx. %d Hz. minimum period is %ld ns", hz, (long)1000000000/hz);
 		if (hz >= (int) (1.0/((double)(USECREQ)/1000000))) {
 			printf (" or higher");
 		}       

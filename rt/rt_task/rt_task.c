@@ -192,10 +192,12 @@ int main(int argc, char* argv[])
 
 			t_deadline = timespec_add(&t_deadline, &dl_period);
 			t_sleep = timespec_add(&t_deadline, &dl_period);
-			t_sleep = timespec_add(&t_sleep, &dl_period);
-			t_sleep = timespec_add(&t_sleep, &dl_period);
-			t_sleep = timespec_add(&t_sleep, &dl_period);
-			assert(clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_sleep, NULL) != 0);
+			//assert(clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_sleep, NULL) != 0);
+			//clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_deadline, NULL);
+			while(clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_sleep, NULL) == 0)
+			{
+				t_sleep = timespec_add(&t_sleep, &dl_period);
+			}
 		}
 
 	}
