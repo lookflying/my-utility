@@ -7,13 +7,17 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <assert.h>
+#include <sys/mman.h>
 static struct timespec t_deadline;
 static volatile int running = 0;
 static volatile int ready = 0;
 static volatile int started = 0;
 static struct timespec dl_period, dl_budget, dl_exec;
-
-
+static int lack_cnt = 0, miss_cnt = 0;
+static int cnt = 0;//task counter
+static struct timespec t_exit;
+static int duration = 0;
+static int log = 1;
 static int64_t timespec_to_nsec(struct timespec *ts)
 {
 	return ts->tv_sec * 1E9 + ts->tv_nsec;
@@ -85,17 +89,57 @@ int timespec_lower(struct timespec *what, struct timespec *than)
 	return 0;
 }
 
-void alarm_handler(int signum)
+void print_result(struct timespec *t_now)
+{	
+	struct timespec t_duration;
+	int64_t i_duration;
+	t_duration = timespec_sub(t_now, &t_exit);
+	i_duration = timespec_to_nsec(&t_duration) + (int64_t)duration * 1E9;
+
+	printf("%19lld\t%19lld\t%19lld\t%11d(%3.2f%%)\t%19d\t%19lld%11d(%3.2f%%)\t===end===\n",
+						timespec_to_nsec(&t_exit) - (int64_t)(duration * 1E9),
+						timespec_to_nsec(t_now),
+						i_duration,
+						lack_cnt,
+						(double)lack_cnt/(double)cnt * 100.0,
+						cnt,
+						(int64_t)i_duration / cnt,
+						miss_cnt,
+						(double)miss_cnt/(double)cnt * 100.0);
+	exit(0);
+	
+}
+
+
+void signal_handler(int signum)
 {
-		if (ready)
+		switch(signum)
 		{
-			if (!started)
+			case SIGALRM:
 			{
-				clock_gettime(CLOCK_REALTIME, &t_deadline);
-				t_deadline = timespec_add(&t_deadline, &dl_period);
-				started = 1;
+				if (ready)
+				{
+					if (!started)
+					{
+						clock_gettime(CLOCK_REALTIME, &t_deadline);
+						t_deadline = timespec_add(&t_deadline, &dl_period);
+						started = 1;
+					}
+					running = 0;
+				}
+				break;
 			}
-			running = 0;
+			case SIGINT:
+			{
+				struct timespec t_now;
+				clock_gettime(CLOCK_REALTIME, &t_now);
+				print_result(&t_now);
+				break;
+			}
+			default:
+			{
+				break;
+			}
 		}
 }
 
@@ -112,16 +156,32 @@ static inline struct timespec busy_wait(struct timespec *to)
 		}
 	}
 }
-static inline void print_log(struct timespec *start, struct timespec *end, struct timespec *diff, struct timespec *remaining, struct timespec *deadline, struct timespec *slack)
+static inline void print_log(struct timespec *start, struct timespec *end, struct timespec *diff, struct timespec *remaining, struct timespec *deadline, struct timespec *offset, struct timespec *slack)
 {
-	int64_t i_start, i_end, i_diff, i_remaining, i_deadline, i_slack;
+	int64_t i_start, i_end, i_diff, i_remaining, i_deadline, i_slack, i_offset;
 	i_start = timespec_to_nsec(start);
 	i_end = timespec_to_nsec(end);
 	i_diff = timespec_to_nsec(diff);
 	i_remaining = timespec_to_nsec(remaining);
 	i_deadline = timespec_to_nsec(deadline);
+	i_offset = timespec_to_nsec(offset);
 	i_slack = timespec_to_nsec(slack);
-	printf("%lld\t%lld\t%lld\t%lld\t%lld\t%lld\n", i_start, i_end, i_diff, i_remaining, i_deadline, i_slack);
+	if (i_remaining > 0)
+	{
+		++lack_cnt;
+	}
+	if (i_slack < 0)
+	{
+		++miss_cnt;
+	}
+	printf("%19lld\t%19lld\t%19lld\t%19lld\t%19lld\t%19lld\t%19lld\n",
+							i_start,
+							i_end,
+							i_diff,
+							i_remaining, 
+							i_deadline,
+							i_offset, 
+							i_slack);
 }
 
 int main(int argc, char* argv[])
@@ -134,8 +194,17 @@ int main(int argc, char* argv[])
 	unsigned int flags = 0;
 	struct sigaction sa;
 	struct itimerval timer;
-	if (argc == 2)
+	if (argc >= 2)
 	{
+	
+		printf("lock pages in memory\n");
+		ret = mlockall(MCL_CURRENT | MCL_FUTURE);
+		if (ret < 0)
+		{
+			perror("mlockall");
+			exit(1);
+		}
+	
 		token = strtok(argv[1], ":");
 		period = strtol(token, NULL, 10);
 		token = strtok(NULL, ":");
@@ -143,7 +212,18 @@ int main(int argc, char* argv[])
 		token = strtok(NULL, ":");
 		exec = strtol(token, NULL, 10);
 		printf("period = %ld us, exec = %ld us\n", period, exec);
+		
+		if (argc >= 3)
+		{
+			duration = atoi(argv[2]);
+			clock_gettime(CLOCK_REALTIME, &t_exit);
+			t_exit.tv_sec = t_exit.tv_sec + duration;
+		}
 
+		if (argc >= 4)
+		{
+			log = atoi(argv[3]);
+		}
 		pid = 0;
 
 		assert(period >= budget && budget >= exec);
@@ -167,37 +247,49 @@ int main(int argc, char* argv[])
 		}
 
 		memset(&sa, 0, sizeof(sa));
-		sa.sa_handler = &alarm_handler;
+		sa.sa_handler = &signal_handler;
 		sigaction(SIGALRM, &sa, NULL);
+		sigaction(SIGINT, &sa, NULL);
 		timer.it_value.tv_sec = dl_period.tv_sec;
 		timer.it_value.tv_usec = dl_period.tv_nsec / 1000;
 		timer.it_interval.tv_sec = dl_period.tv_sec;
 		timer.it_interval.tv_usec = dl_period.tv_nsec / 1000;
 		setitimer(ITIMER_REAL, &timer, NULL);
 
-		struct timespec t_start, t_end, t_diff, t_slack, now, t_exec, t_remaining, t_sleep;
+		struct timespec t_start, t_end, t_diff, t_slack, t_now, t_exec, t_remaining, t_sleep, t_offset;
 		ready = 1;
 		while(!started);
 		while(1)
 		{
 			clock_gettime(CLOCK_REALTIME, &t_start);
-			clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now);
-			t_exec = timespec_add(&now, &dl_exec);
+			clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t_now);
+			t_exec = timespec_add(&t_now, &dl_exec);
 			running = 1;
 			t_remaining = busy_wait(&t_exec);
+			++cnt;
 			clock_gettime(CLOCK_REALTIME, &t_end);
 
 			t_diff = timespec_sub(&t_end, &t_start);
 			t_slack = timespec_sub(&t_deadline, &t_end);
-			print_log(&t_start, &t_end, &t_diff, &t_remaining, &t_deadline, &t_slack);
-
+			t_offset = timespec_sub(&t_deadline, &t_start);
+			if(log)
+			{
+				print_log(&t_start, &t_end, &t_diff, &t_remaining, &t_deadline, &t_offset, &t_slack);
+			}
 			t_deadline = timespec_add(&t_deadline, &dl_period);
-			t_sleep = timespec_add(&t_deadline, &dl_period);
+			t_sleep = t_deadline;
 			//assert(clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_sleep, NULL) != 0);
 			//clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_deadline, NULL);
 			while(clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_sleep, NULL) == 0)
 			{
 				t_sleep = timespec_add(&t_sleep, &dl_period);
+			}
+			
+			clock_gettime(CLOCK_REALTIME, &t_now);
+			if (duration && timespec_lower(&t_exit, &t_now))
+			{
+				print_result(&t_now);
+								
 			}
 		}
 
