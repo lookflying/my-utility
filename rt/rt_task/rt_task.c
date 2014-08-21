@@ -8,6 +8,8 @@
 #include <sys/time.h>
 #include <assert.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <unistd.h>
 static struct timespec t_deadline;
 static volatile int running = 0;
 static volatile int ready = 0;
@@ -96,13 +98,14 @@ void print_result(struct timespec *t_now)
 	t_duration = timespec_sub(t_now, &t_exit);
 	i_duration = timespec_to_nsec(&t_duration) + (int64_t)duration * 1E9;
 
-	printf("%19lld\t%19lld\t%19lld\t%11d(%3.2f%%)\t%19d\t%19lld%11d(%3.2f%%)\t===end===\n",
+	printf("%19lld\t%19lld\t%19lld\t%11d(%3.2f%%)\t%10d(%9lld)\t%19lld%11d(%3.2f%%)\t===end===\n",
 						timespec_to_nsec(&t_exit) - (int64_t)(duration * 1E9),
 						timespec_to_nsec(t_now),
 						i_duration,
 						lack_cnt,
 						(double)lack_cnt/(double)cnt * 100.0,
 						cnt,
+						(int64_t)(duration * 1E9) / timespec_to_nsec(&dl_period),
 						(int64_t)i_duration / cnt,
 						miss_cnt,
 						(double)miss_cnt/(double)cnt * 100.0);
@@ -174,7 +177,9 @@ static inline void print_log(struct timespec *start, struct timespec *end, struc
 	{
 		++miss_cnt;
 	}
-	printf("%19lld\t%19lld\t%19lld\t%19lld\t%19lld\t%19lld\t%19lld\n",
+	if (log)
+	{
+		printf("%19lld\t%19lld\t%19lld\t%19lld\t%19lld\t%19lld\t%19lld\n",
 							i_start,
 							i_end,
 							i_diff,
@@ -182,6 +187,7 @@ static inline void print_log(struct timespec *start, struct timespec *end, struc
 							i_deadline,
 							i_offset, 
 							i_slack);
+	}
 }
 
 int main(int argc, char* argv[])
@@ -194,9 +200,13 @@ int main(int argc, char* argv[])
 	unsigned int flags = 0;
 	struct sigaction sa;
 	struct itimerval timer;
+
 	if (argc >= 2)
 	{
-	
+
+		pid = getpid();
+		printf("%d\t===pid===\n", (int)pid);
+
 		printf("lock pages in memory\n");
 		ret = mlockall(MCL_CURRENT | MCL_FUTURE);
 		if (ret < 0)
@@ -211,7 +221,7 @@ int main(int argc, char* argv[])
 		budget = strtol(token, NULL, 10);
 		token = strtok(NULL, ":");
 		exec = strtol(token, NULL, 10);
-		printf("period = %ld us, exec = %ld us\n", period, exec);
+		printf("period = %ld us, budget = %ld us, exec = %ld us\n", period, budget, exec);
 		
 		if (argc >= 3)
 		{
@@ -272,10 +282,7 @@ int main(int argc, char* argv[])
 			t_diff = timespec_sub(&t_end, &t_start);
 			t_slack = timespec_sub(&t_deadline, &t_end);
 			t_offset = timespec_sub(&t_deadline, &t_start);
-			if(log)
-			{
-				print_log(&t_start, &t_end, &t_diff, &t_remaining, &t_deadline, &t_offset, &t_slack);
-			}
+			print_log(&t_start, &t_end, &t_diff, &t_remaining, &t_deadline, &t_offset, &t_slack);
 			t_deadline = timespec_add(&t_deadline, &dl_period);
 			t_sleep = t_deadline;
 			//assert(clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_sleep, NULL) != 0);
