@@ -116,10 +116,10 @@ void print_result(struct timespec *t_now)
 						lack_cnt,
 						(double)lack_cnt/(double)cnt * 100.0,
 						cnt,
-						(int64_t)i_duration / cnt,
+						(int64_t)(duration * 1E9) / timespec_to_nsec(&dl_period),
 						miss_cnt,
 						(double)miss_cnt/(double)cnt * 100.0,
-						(int64_t)(duration * 1E9) / timespec_to_nsec(&dl_period));
+						(int64_t)i_duration / cnt);
 
 	exit(0);
 	
