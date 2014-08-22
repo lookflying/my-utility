@@ -10,6 +10,7 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <stdlib.h>
 static struct timespec t_deadline;
 static volatile int running = 0;
 static volatile int ready = 0;
@@ -20,6 +21,9 @@ static int cnt = 0;//task counter
 static struct timespec t_exit;
 static int duration = 0;
 static int log = 1;
+static struct timespec t_task_start, t_task_life;
+
+
 static int64_t timespec_to_nsec(struct timespec *ts)
 {
 	return ts->tv_sec * 1E9 + ts->tv_nsec;
@@ -91,25 +95,14 @@ int timespec_lower(struct timespec *what, struct timespec *than)
 	return 0;
 }
 
-void print_result(struct timespec *t_now)
+void print_result_exit(struct timespec *t_now)
 {	
 	struct timespec t_duration;
 	int64_t i_duration;
 	t_duration = timespec_sub(t_now, &t_exit);
 	i_duration = timespec_to_nsec(&t_duration) + (int64_t)duration * 1E9;
 
-	printf("%19lld\t%19lld\t%19lld\t%11d(%3.2f%%)\t%8d\t%8lld\t%19lld%11d(%3.2f%%)\t===end===\n",
-						timespec_to_nsec(&t_exit) - (int64_t)(duration * 1E9),
-						timespec_to_nsec(t_now),
-						i_duration,
-						lack_cnt,
-						(double)lack_cnt/(double)cnt * 100.0,
-						cnt,
-						(int64_t)(duration * 1E9) / timespec_to_nsec(&dl_period),
-						(int64_t)i_duration / cnt,
-						miss_cnt,
-						(double)miss_cnt/(double)cnt * 100.0);
-	printf("start= %lld\nend= %lld\nduration= %lld\nlack_cnt= %d\t%3.2f%%\ncnt= %d\ncorrect_cnt= %lld\nmiss_cnt=%d\t%3.2f%%\naverage_duration_per_cnt= %lld\n",
+	printf("===begin===\nstart= %lld ns\nend= %lld ns\nduration= %lld ns\nlack_cnt= %d\t%3.2f%%\ncnt= %d\ncorrect_cnt= %lld\nmiss_cnt= %d\t%3.2f%%\naverage_duration_per_cnt= %lld ns\n",
 						timespec_to_nsec(&t_exit) - (int64_t)(duration * 1E9),
 						timespec_to_nsec(t_now),
 						i_duration,
@@ -148,7 +141,7 @@ void signal_handler(int signum)
 			{
 				struct timespec t_now;
 				clock_gettime(CLOCK_REALTIME, &t_now);
-				print_result(&t_now);
+				print_result_exit(&t_now);
 				break;
 			}
 			default:
@@ -201,7 +194,15 @@ static inline void print_log(struct timespec *start, struct timespec *end, struc
 							i_slack);
 	}
 }
-
+void bye(void)
+{
+	struct timespec t_life;	
+	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t_life);
+	t_task_life = timespec_sub(&t_life, &t_task_start);
+	printf("task_lifetime= %lld ns\nlifetime= %lld ns\n===end===\n", 
+			timespec_to_nsec(&t_task_life),
+			timespec_to_nsec(&t_life));
+}
 int main(int argc, char* argv[])
 {	
 	pid_t pid;
@@ -213,6 +214,12 @@ int main(int argc, char* argv[])
 	struct sigaction sa;
 	struct itimerval timer;
 
+	ret = atexit(bye);
+	if (ret != 0)
+	{
+		perror("atexit");
+		exit(1);
+	}
 	if (argc >= 2)
 	{
 
@@ -281,6 +288,7 @@ int main(int argc, char* argv[])
 		struct timespec t_start, t_end, t_diff, t_slack, t_now, t_exec, t_remaining, t_sleep, t_offset;
 		ready = 1;
 		while(!started);
+		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t_task_start);	
 		while(1)
 		{
 			clock_gettime(CLOCK_REALTIME, &t_start);
@@ -307,7 +315,7 @@ int main(int argc, char* argv[])
 			clock_gettime(CLOCK_REALTIME, &t_now);
 			if (duration && timespec_lower(&t_exit, &t_now))
 			{
-				print_result(&t_now);
+				print_result_exit(&t_now);
 								
 			}
 		}
