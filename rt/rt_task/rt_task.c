@@ -98,7 +98,7 @@ void print_result(struct timespec *t_now)
 	t_duration = timespec_sub(t_now, &t_exit);
 	i_duration = timespec_to_nsec(&t_duration) + (int64_t)duration * 1E9;
 
-	printf("%19lld\t%19lld\t%19lld\t%11d(%3.2f%%)\t%10d(%9lld)\t%19lld%11d(%3.2f%%)\t===end===\n",
+	printf("%19lld\t%19lld\t%19lld\t%11d(%3.2f%%)\t%8d\t%8lld\t%19lld%11d(%3.2f%%)\t===end===\n",
 						timespec_to_nsec(&t_exit) - (int64_t)(duration * 1E9),
 						timespec_to_nsec(t_now),
 						i_duration,
@@ -109,6 +109,18 @@ void print_result(struct timespec *t_now)
 						(int64_t)i_duration / cnt,
 						miss_cnt,
 						(double)miss_cnt/(double)cnt * 100.0);
+	printf("start= %lld\nend= %lld\nduration= %lld\nlack_cnt= %d\t%3.2f%%\ncnt= %d\ncorrect_cnt= %lld\nmiss_cnt=%d\t%3.2f%%\naverage_duration_per_cnt= %lld\n",
+						timespec_to_nsec(&t_exit) - (int64_t)(duration * 1E9),
+						timespec_to_nsec(t_now),
+						i_duration,
+						lack_cnt,
+						(double)lack_cnt/(double)cnt * 100.0,
+						cnt,
+						(int64_t)i_duration / cnt,
+						miss_cnt,
+						(double)miss_cnt/(double)cnt * 100.0,
+						(int64_t)(duration * 1E9) / timespec_to_nsec(&dl_period));
+
 	exit(0);
 	
 }

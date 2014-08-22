@@ -1,9 +1,7 @@
 CFLAGS=-lrt
 OBJ= rt_task.o dl_syscalls.o
-
 rt_task: ${OBJ}
 	gcc $? -o $@ ${CFLAGS}
-
 ${OBJ}:	%.o: %.c
 	gcc -c $< -o $@
 clean:
