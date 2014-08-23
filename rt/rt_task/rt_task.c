@@ -1,8 +1,7 @@
 #include "dl_syscalls.h"
+#include "rt_task.h"
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/time.h>
@@ -11,108 +10,34 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdlib.h>
-static struct timespec t_deadline;
-static volatile int running = 0;
-static volatile int ready = 0;
-static volatile int started = 0;
-static struct timespec dl_period, dl_budget, dl_exec;
-static int lack_cnt = 0, miss_cnt = 0;
-static int cnt = 0;//task counter
-static struct timespec t_exit;
-static int duration = 0;
-static int log = 1;
-static struct timespec t_task_start, t_task_life;
+
+static int g_log = 1;
+static int duration;
+static task_data_t task;
+static task_result_t task_rst;
 
 
-static int64_t timespec_to_nsec(struct timespec *ts)
-{
-	return ts->tv_sec * 1E9 + ts->tv_nsec;
-}
-
-
-struct timespec usec_to_timespec(unsigned long usec)
-{
-	struct timespec ts;
-
-	ts.tv_sec = usec / 1000000;
-	ts.tv_nsec = (usec % 1000000) * 1000;
-	
-	return ts;
-}
-
-struct timespec msec_to_timespec(unsigned int msec)
-{
-	struct timespec ts;
-
-	ts.tv_sec = msec / 1000;
-	ts.tv_nsec = (msec % 1000) * 1000000;
-
-	return ts;
-}
-
-struct timespec timespec_add(struct timespec *t1, struct timespec *t2)
-{
-	struct timespec ts;
-
-	ts.tv_sec = t1->tv_sec + t2->tv_sec;
-	ts.tv_nsec = t1->tv_nsec + t2->tv_nsec;
-
-	while (ts.tv_nsec >= 1E9) {
-		ts.tv_nsec -= 1E9;
-		ts.tv_sec++;
-	}
-
-	return ts;
-}
-
-struct timespec timespec_sub(struct timespec *t1, struct timespec *t2)
-{
-	struct timespec ts;
-	
-	if (t1->tv_nsec < t2->tv_nsec) {
-		ts.tv_sec = t1->tv_sec - t2->tv_sec -1;
-		ts.tv_nsec = t1->tv_nsec  + 1000000000 - t2->tv_nsec; 
-	} else {
-		ts.tv_sec = t1->tv_sec - t2->tv_sec;
-		ts.tv_nsec = t1->tv_nsec - t2->tv_nsec; 
-	}
-
-	return ts;
-
-}
-
-int timespec_lower(struct timespec *what, struct timespec *than)
-{
-	if (what->tv_sec > than->tv_sec)
-		return 0;
-
-	if (what->tv_sec < than->tv_sec)
-		return 1;
-
-	if (what->tv_nsec < than->tv_nsec)
-		return 1;
-
-	return 0;
-}
-
-void print_result_exit(struct timespec *t_now)
+void print_result_exit(struct timespec *t_now, task_data_t *p_task, task_result_t *p_rst)
 {	
 	struct timespec t_duration;
 	int64_t i_duration;
-	t_duration = timespec_sub(t_now, &t_exit);
+	t_duration = timespec_sub(t_now, &p_rst->t_exit);
 	i_duration = timespec_to_nsec(&t_duration) + (int64_t)duration * 1E9;
-
-	printf("===begin===\nstart= %lld ns\nend= %lld ns\nduration= %lld ns\nlack_cnt= %d\t%3.2f%%\ncnt= %d\ncorrect_cnt= %lld\nmiss_cnt= %d\t%3.2f%%\naverage_duration_per_cnt= %lld ns\n",
-						timespec_to_nsec(&t_exit) - (int64_t)(duration * 1E9),
+	p_rst->i_whole_duration = i_duration;
+	printf("===begin===\nstart=\t%lld ns\nend=\t%lld ns\nduration=\t%lld ns\nlack_cnt=\t%d\t%3.2f%%\ncnt=\t%d\ncorrect_cnt=\t%d\nmiss_cnt=\t%d\t%3.2f%%\nthread_runtime=\t%lld ns\ncorrect_thread_runtime=\t%lld ns\navg_thread_runtime=\t%lld\n",
+						timespec_to_nsec(&p_rst->t_exit) - (int64_t)(duration * 1E9),
 						timespec_to_nsec(t_now),
 						i_duration,
-						lack_cnt,
-						(double)lack_cnt/(double)cnt * 100.0,
-						cnt,
-						(int64_t)(duration * 1E9) / timespec_to_nsec(&dl_period),
-						miss_cnt,
-						(double)miss_cnt/(double)cnt * 100.0,
-						(int64_t)i_duration / cnt);
+						p_rst->lack_cnt,
+						(double)p_rst->lack_cnt/(double)p_rst->cnt * 100.0,
+						p_rst->cnt,
+						p_rst->correct_cnt,//(int64_t)(duration * 1E9) / timespec_to_nsec(&p_rst->dl_period),
+						p_rst->miss_cnt,
+						(double)p_rst->miss_cnt/(double)p_rst->cnt * 100.0,
+						p_rst->i_whole_thread_runtime,
+						p_rst->i_corrent_whole_thread_runtime,
+						p_rst->i_whole_thread_runtime / p_rst->cnt);
+						
 
 	exit(0);
 	
@@ -125,23 +50,16 @@ void signal_handler(int signum)
 		{
 			case SIGALRM:
 			{
-				if (ready)
-				{
-					if (!started)
-					{
-						clock_gettime(CLOCK_REALTIME, &t_deadline);
-						t_deadline = timespec_add(&t_deadline, &dl_period);
-						started = 1;
-					}
-					running = 0;
-				}
+				struct timespec t_alarm;
+						clock_gettime(CLOCK_REALTIME, &t_alarm);
+						printf("got SIGALARM at %lld ns\n", timespec_to_nsec(&t_alarm));
 				break;
 			}
 			case SIGINT:
 			{
 				struct timespec t_now;
 				clock_gettime(CLOCK_REALTIME, &t_now);
-				print_result_exit(&t_now);
+				print_result_exit(&t_now, &task, &task_rst);
 				break;
 			}
 			default:
@@ -151,57 +69,62 @@ void signal_handler(int signum)
 		}
 }
 
-static inline struct timespec busy_wait(struct timespec *to)
+static inline int busy_wait(struct timespec *to, struct timespec *dl)
 {
-	struct timespec t_step, t_remaining;
+	struct timespec t_step, t_wall;
 	while(1)
 	{
 		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t_step);
-		if (!running || !timespec_lower(&t_step, to))
+		if (!timespec_lower(&t_step, to))
 		{
-			t_remaining = timespec_sub(to, &t_step);
-			return t_remaining;
+			return 0;
+		}	
+		clock_gettime(CLOCK_REALTIME, &t_wall);
+		if (!timespec_lower(&t_wall, dl))
+		{
+			return 1;
 		}
 	}
 }
-static inline void print_log(struct timespec *start, struct timespec *end, struct timespec *diff, struct timespec *remaining, struct timespec *deadline, struct timespec *offset, struct timespec *slack)
+
+static inline void process_log(task_data_t *p_task, task_result_t *p_rst)
 {
-	int64_t i_start, i_end, i_diff, i_remaining, i_deadline, i_slack, i_offset;
-	i_start = timespec_to_nsec(start);
-	i_end = timespec_to_nsec(end);
-	i_diff = timespec_to_nsec(diff);
-	i_remaining = timespec_to_nsec(remaining);
-	i_deadline = timespec_to_nsec(deadline);
-	i_offset = timespec_to_nsec(offset);
-	i_slack = timespec_to_nsec(slack);
-	if (i_remaining > 0)
-	{
-		++lack_cnt;
+	int64_t i_offset, i_diff, i_slack, i_thread_run, i_thread_remain;
+	i_offset = timespec_to_nsec(&p_task->t_offset);
+	i_diff = timespec_to_nsec(&p_task->t_diff);
+	i_slack = timespec_to_nsec(&p_task->t_slack);
+	i_thread_run = timespec_to_nsec(&p_task->t_thread_run);
+	i_thread_remain = timespec_to_nsec(&p_task->t_thread_remain);
+
+	++p_rst->cnt;
+	if (i_thread_remain > 0)
+	{	
+		++p_rst->lack_cnt;
 	}
 	if (i_slack < 0)
 	{
-		++miss_cnt;
+		++p_rst->miss_cnt;
 	}
-	if (log)
+	p_rst->i_whole_thread_runtime += i_thread_run;
+	
+	if (g_log)
 	{
-		printf("%19lld\t%19lld\t%19lld\t%19lld\t%19lld\t%19lld\t%19lld\n",
-							i_start,
-							i_end,
-							i_diff,
-							i_remaining, 
-							i_deadline,
-							i_offset, 
-							i_slack);
+		printf("%12lld\t%12lld\t%12lld\t%12lld\t%12lld\n",
+					i_offset,
+					i_diff,
+					i_slack,
+					i_thread_run,
+					i_thread_remain);
 	}
 }
+
 void bye(void)
 {
-	struct timespec t_life;	
-	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t_life);
-	t_task_life = timespec_sub(&t_life, &t_task_start);
-	printf("task_lifetime= %lld ns\nlifetime= %lld ns\n===end===\n", 
-			timespec_to_nsec(&t_task_life),
-			timespec_to_nsec(&t_life));
+	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &task_rst.t_whole_thread_finish);
+	task_rst.t_whole_thread_run = timespec_sub(&task_rst.t_whole_thread_finish, &task_rst.t_whole_thread_start);
+	printf("thread_total= %lld ns\nthread_run= %lld ns\n===end===\n", 
+			timespec_to_nsec(&task_rst.t_whole_thread_finish),
+			timespec_to_nsec(&task_rst.t_whole_thread_run));
 }
 int main(int argc, char* argv[])
 {	
@@ -214,15 +137,17 @@ int main(int argc, char* argv[])
 	struct sigaction sa;
 	struct itimerval timer;
 
+	memset(&task, 0, sizeof(task));
+	memset(&task_rst, 0, sizeof(task_rst));
+
 	ret = atexit(bye);
 	if (ret != 0)
 	{
 		perror("atexit");
 		exit(1);
 	}
-	if (argc >= 2)
+	if (argc >= 3)
 	{
-
 		pid = getpid();
 		printf("%d\t===pid===\n", (int)pid);
 
@@ -242,31 +167,33 @@ int main(int argc, char* argv[])
 		exec = strtol(token, NULL, 10);
 		printf("period = %ld us, budget = %ld us, exec = %ld us\n", period, budget, exec);
 		
-		if (argc >= 3)
-		{
-			duration = atoi(argv[2]);
-			clock_gettime(CLOCK_REALTIME, &t_exit);
-			t_exit.tv_sec = t_exit.tv_sec + duration;
-		}
+		//duration is a must
+		duration = atoi(argv[2]);
+		clock_gettime(CLOCK_REALTIME, &task_rst.t_exit);
+		task_rst.t_exit.tv_sec = task_rst.t_exit.tv_sec + duration;
 
 		if (argc >= 4)
 		{
-			log = atoi(argv[3]);
+			g_log = atoi(argv[3]);
 		}
+
+		//set deadline scheduling
 		pid = 0;
 
 		assert(period >= budget && budget >= exec);
-		dl_period = usec_to_timespec(period);
-		dl_budget = usec_to_timespec(budget);
-		dl_exec = usec_to_timespec(exec);
+		task_rst.dl_period = usec_to_timespec(period);
+		task_rst.dl_budget = usec_to_timespec(budget);
+		task_rst.dl_exec = usec_to_timespec(exec);
 		dl_attr.size = sizeof(dl_attr);
 		dl_attr.sched_flags = 0;
 		dl_attr.sched_policy = SCHED_DEADLINE;
 		dl_attr.sched_priority = 0;
-		dl_attr.sched_runtime = timespec_to_nsec(&dl_budget) + (timespec_to_nsec(&dl_budget) / 100) * 5;
-		dl_attr.sched_deadline = timespec_to_nsec(&dl_period);
-		dl_attr.sched_period = timespec_to_nsec(&dl_period);
+		dl_attr.sched_runtime = timespec_to_nsec(&task_rst.dl_budget);
+		dl_attr.sched_deadline = timespec_to_nsec(&task_rst.dl_period);
+		dl_attr.sched_period = timespec_to_nsec(&task_rst.dl_period);
 	
+		task_rst.correct_cnt =(int)((int64_t)(duration * 1E9) / timespec_to_nsec(&task_rst.dl_period));
+		task_rst.i_corrent_whole_thread_runtime = (int64_t)task_rst.correct_cnt * timespec_to_nsec(&task_rst.dl_exec);
 
 		ret = sched_setattr(pid, &dl_attr, flags);
 		if (ret != 0)
@@ -274,7 +201,7 @@ int main(int argc, char* argv[])
 			perror("sched_setattr");
 			exit(1);
 		}
-
+#if 0
 		memset(&sa, 0, sizeof(sa));
 		sa.sa_handler = &signal_handler;
 		sigaction(SIGALRM, &sa, NULL);
@@ -284,40 +211,44 @@ int main(int argc, char* argv[])
 		timer.it_interval.tv_sec = dl_period.tv_sec;
 		timer.it_interval.tv_usec = dl_period.tv_nsec / 1000;
 		setitimer(ITIMER_REAL, &timer, NULL);
+#endif
+		struct timespec t_exec;
 
-		struct timespec t_start, t_end, t_diff, t_slack, t_now, t_exec, t_remaining, t_sleep, t_offset;
-		ready = 1;
-		while(!started);
-		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t_task_start);	
+		clock_gettime(CLOCK_REALTIME, &task.t_period);
+		task.t_period = timespec_add(&task.t_period, &task_rst.dl_period);//start from next period 
+		task.t_deadline = timespec_add(&task.t_period, &task_rst.dl_period);
+		clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &task.t_period, NULL);
+		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &task_rst.t_whole_thread_start);	
 		while(1)
 		{
-			clock_gettime(CLOCK_REALTIME, &t_start);
-			clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t_now);
-			t_exec = timespec_add(&t_now, &dl_exec);
-			running = 1;
-			t_remaining = busy_wait(&t_exec);
-			++cnt;
-			clock_gettime(CLOCK_REALTIME, &t_end);
+			clock_gettime(CLOCK_REALTIME, &task.t_begin);
+			clock_gettime(CLOCK_THREAD_CPUTIME_ID, &task.t_thread_start);
+			t_exec = timespec_add(&task.t_thread_start, &task_rst.dl_exec);
+			busy_wait(&t_exec, &task.t_deadline);
+			clock_gettime(CLOCK_THREAD_CPUTIME_ID, &task.t_thread_finish);
+			clock_gettime(CLOCK_REALTIME, &task.t_end);
 
-			t_diff = timespec_sub(&t_end, &t_start);
-			t_slack = timespec_sub(&t_deadline, &t_end);
-			t_offset = timespec_sub(&t_deadline, &t_start);
-			print_log(&t_start, &t_end, &t_diff, &t_remaining, &t_deadline, &t_offset, &t_slack);
-			t_deadline = timespec_add(&t_deadline, &dl_period);
-			t_sleep = t_deadline;
-			//assert(clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_sleep, NULL) != 0);
-			//clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_deadline, NULL);
-			while(clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t_sleep, NULL) == 0)
-			{
-				t_sleep = timespec_add(&t_sleep, &dl_period);
-			}
-			
+
+			task.t_thread_run = timespec_sub(&task.t_thread_finish, &task.t_thread_start);
+			task.t_thread_remain = timespec_sub(&t_exec, &task.t_thread_finish);
+			task.t_diff = timespec_sub(&task.t_end, &task.t_begin);
+			task.t_slack = timespec_sub(&task.t_deadline, &task.t_end);
+			task.t_offset = timespec_sub(&task.t_begin, &task.t_period);
+			process_log(&task, &task_rst);
+
+			task.t_period = timespec_add(&task.t_period, &task_rst.dl_period);
+			task.t_deadline = timespec_add(&task.t_deadline, &task_rst.dl_period);
+
+			//check total test time
+			struct timespec t_now;
 			clock_gettime(CLOCK_REALTIME, &t_now);
-			if (duration && timespec_lower(&t_exit, &t_now))
+			if (duration && timespec_lower(&task_rst.t_exit, &t_now))
 			{
-				print_result_exit(&t_now);
+				print_result_exit(&t_now, &task, &task_rst);
 								
 			}
+
+			clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &task.t_period, NULL);
 		}
 
 	}
