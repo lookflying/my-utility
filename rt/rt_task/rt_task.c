@@ -24,7 +24,7 @@ void print_result_exit(struct timespec *t_now, task_data_t *p_task, task_result_
 	t_duration = timespec_sub(t_now, &p_rst->t_exit);
 	i_duration = timespec_to_nsec(&t_duration) + (int64_t)duration * 1E9;
 	p_rst->i_whole_duration = i_duration;
-	printf("===begin===\nstart=\t%lld ns\nend=\t%lld ns\nduration=\t%lld ns\nlack_cnt=\t%d\t%3.2f%%\ncnt=\t%d\ncorrect_cnt=\t%d\nmiss_cnt=\t%d\t%3.2f%%\nthread_runtime=\t%lld ns\ncorrect_thread_runtime=\t%lld ns\navg_thread_runtime=\t%lld\n",
+	printf("===begin===\nstart=\t%lld ns\nend=\t%lld ns\nduration=\t%lld ns\nlack_cnt=\t%d\t%3.2f%%\ncnt=\t%d\ncorrect_cnt=\t%d\nmiss_cnt=\t%d\t%3.2f%%\nthread_runtime=\t%lld ns\ncorrect_thread_runtime=\t%lld ns\navg_thread_runtime=\t%lld\t%3.2f%%\t%3.2f%%\t%3.2f%%\n",
 						timespec_to_nsec(&p_rst->t_exit) - (int64_t)(duration * 1E9),
 						timespec_to_nsec(t_now),
 						i_duration,
@@ -36,7 +36,11 @@ void print_result_exit(struct timespec *t_now, task_data_t *p_task, task_result_
 						(double)p_rst->miss_cnt/(double)p_rst->cnt * 100.0,
 						p_rst->i_whole_thread_runtime,
 						p_rst->i_corrent_whole_thread_runtime,
-						p_rst->i_whole_thread_runtime / p_rst->cnt);
+						p_rst->i_whole_thread_runtime / p_rst->cnt,
+						(double)p_rst->i_whole_thread_runtime / p_rst->cnt / timespec_to_nsec(&p_rst->dl_exec),
+						(double)p_rst->i_whole_thread_runtime / p_rst->cnt / timespec_to_nsec(&p_rst->dl_budget),
+						(double)p_rst->i_whole_thread_runtime / p_rst->cnt / timespec_to_nsec(&p_rst->dl_period));
+
 						
 
 	exit(0);
@@ -122,9 +126,13 @@ void bye(void)
 {
 	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &task_rst.t_whole_thread_finish);
 	task_rst.t_whole_thread_run = timespec_sub(&task_rst.t_whole_thread_finish, &task_rst.t_whole_thread_start);
-	printf("thread_total= %lld ns\nthread_run= %lld ns\n===end===\n", 
+	printf("thread_total= %lld ns\t%3.2f%%\t%3.2f%%\nthread_run= %lld ns\t%3.2f%%\t%3.2f%%\n===end===\n", 
 			timespec_to_nsec(&task_rst.t_whole_thread_finish),
-			timespec_to_nsec(&task_rst.t_whole_thread_run));
+			(double)timespec_to_nsec(&task_rst.t_whole_thread_finish) / (double)timespec_to_nsec(&task_rst.dl_budget) / (double)task_rst.correct_cnt * 100.0,
+			(double)timespec_to_nsec(&task_rst.t_whole_thread_finish) / (double)timespec_to_nsec(&task_rst.dl_period) / (double)task_rst.correct_cnt * 100.0,
+			timespec_to_nsec(&task_rst.t_whole_thread_run),
+			(double)timespec_to_nsec(&task_rst.t_whole_thread_run) / (double)timespec_to_nsec(&task_rst.dl_budget) / (double)task_rst.correct_cnt * 100.0,
+			(double)timespec_to_nsec(&task_rst.t_whole_thread_run) / (double)timespec_to_nsec(&task_rst.dl_period) / (double)task_rst.correct_cnt * 100.0);
 }
 int main(int argc, char* argv[])
 {	
