@@ -37,9 +37,9 @@ void print_result_exit(struct timespec *t_now, task_data_t *p_task, task_result_
 						p_rst->i_whole_thread_runtime,
 						p_rst->i_corrent_whole_thread_runtime,
 						p_rst->i_whole_thread_runtime / p_rst->cnt,
-						(double)p_rst->i_whole_thread_runtime / p_rst->cnt / timespec_to_nsec(&p_rst->dl_exec),
-						(double)p_rst->i_whole_thread_runtime / p_rst->cnt / timespec_to_nsec(&p_rst->dl_budget),
-						(double)p_rst->i_whole_thread_runtime / p_rst->cnt / timespec_to_nsec(&p_rst->dl_period));
+						(double)p_rst->i_whole_thread_runtime / p_rst->cnt / timespec_to_nsec(&p_rst->dl_exec) * 100.0,
+						(double)p_rst->i_whole_thread_runtime / p_rst->cnt / timespec_to_nsec(&p_rst->dl_budget) * 100.0,
+						(double)p_rst->i_whole_thread_runtime / p_rst->cnt / timespec_to_nsec(&p_rst->dl_period) * 100.0);
 
 						
 
