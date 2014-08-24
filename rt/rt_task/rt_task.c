@@ -24,12 +24,10 @@ void print_result_exit(struct timespec *t_now, task_data_t *p_task, task_result_
 	t_duration = timespec_sub(t_now, &p_rst->t_exit);
 	i_duration = timespec_to_nsec(&t_duration) + (int64_t)duration * 1E9;
 	p_rst->i_whole_duration = i_duration;
-	printf("===begin===\nstart=\t%lld ns\nend=\t%lld ns\nduration=\t%lld ns\nlack_cnt=\t%d\t%3.2f%%\ncnt=\t%d\ncorrect_cnt=\t%d\nmiss_cnt=\t%d\t%3.2f%%\nthread_runtime=\t%lld ns\ncorrect_thread_runtime=\t%lld ns\navg_thread_runtime=\t%lld\t%3.2f%%\t%3.2f%%\t%3.2f%%\n",
+	printf("===begin===\nstart=\t%lld ns\nend=\t%lld ns\nduration=\t%lld ns\ncnt=\t%d\ncorrect_cnt=\t%d\nmiss_cnt=\t%d\t%3.2f%%\nthread_runtime=\t%lld ns\ncorrect_thread_runtime=\t%lld ns\navg_thread_runtime=\t%lldns\t%3.2f%%\t%3.2f%%\t%3.2f%%\n",
 						timespec_to_nsec(&p_rst->t_exit) - (int64_t)(duration * 1E9),
 						timespec_to_nsec(t_now),
 						i_duration,
-						p_rst->lack_cnt,
-						(double)p_rst->lack_cnt/(double)p_rst->cnt * 100.0,
 						p_rst->cnt,
 						p_rst->correct_cnt,//(int64_t)(duration * 1E9) / timespec_to_nsec(&p_rst->dl_period),
 						p_rst->miss_cnt,
