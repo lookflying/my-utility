@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
 		dl_attr.sched_flags = 0;
 		dl_attr.sched_policy = SCHED_DEADLINE;
 		dl_attr.sched_priority = 0;
-		dl_attr.sched_runtime = timespec_to_nsec(&dl_exec) + (timespec_to_nsec(&dl_exec) / 100) * 5;
+		dl_attr.sched_runtime = timespec_to_nsec(&dl_exec);// + (timespec_to_nsec(&dl_exec) / 100) * 5;
 		dl_attr.sched_deadline = timespec_to_nsec(&dl_period);
 		dl_attr.sched_period = timespec_to_nsec(&dl_period);
 		
