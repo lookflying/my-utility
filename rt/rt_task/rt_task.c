@@ -15,7 +15,7 @@ static int g_log = 1;
 static int duration;
 static task_data_t task;
 static task_result_t task_rst;
-
+static int pure_overhead = 0;
 
 void print_result_exit(struct timespec *t_now, task_data_t *p_task, task_result_t *p_rst)
 {	
@@ -91,6 +91,7 @@ static inline int busy_wait(struct timespec *to, struct timespec *dl)
 
 static inline void process_log(task_data_t *p_task, task_result_t *p_rst)
 {
+	static int first = 1;
 	int64_t i_offset, i_diff, i_slack, i_thread_run, i_thread_remain;
 	i_offset = timespec_to_nsec(&p_task->t_offset);
 	i_diff = timespec_to_nsec(&p_task->t_diff);
@@ -109,6 +110,11 @@ static inline void process_log(task_data_t *p_task, task_result_t *p_rst)
 	}
 	p_rst->i_whole_thread_runtime += i_thread_run;
 	
+	if (first)
+	{
+		printf("%12s\t%12s\t%12s\t%12s\t%12s\n", "offset", "diff", "slack", "exec_time", "unfinished"); 
+		first = 0;
+	}
 	if (g_log)
 	{
 		printf("%12lld\t%12lld\t%12lld\t%12lld\t%12lld\n",
@@ -132,6 +138,7 @@ void bye(void)
 			(double)timespec_to_nsec(&task_rst.t_whole_thread_run) / (double)timespec_to_nsec(&task_rst.dl_budget) / (double)task_rst.correct_cnt * 100.0,
 			(double)timespec_to_nsec(&task_rst.t_whole_thread_run) / (double)timespec_to_nsec(&task_rst.dl_period) / (double)task_rst.correct_cnt * 100.0);
 }
+
 int main(int argc, char* argv[])
 {	
 	pid_t pid;
@@ -172,7 +179,15 @@ int main(int argc, char* argv[])
 		token = strtok(NULL, ":");
 		exec = strtol(token, NULL, 10);
 		printf("period = %ld us, budget = %ld us, exec = %ld us\n", period, budget, exec);
-		
+	
+		if (exec == 0)
+		{
+			pure_overhead = 1;
+		}
+		else
+		{
+			pure_overhead = 0;
+		}
 		//duration is a must
 		duration = atoi(argv[2]);
 		clock_gettime(CLOCK_REALTIME, &task_rst.t_exit);
@@ -230,7 +245,10 @@ int main(int argc, char* argv[])
 			clock_gettime(CLOCK_REALTIME, &task.t_begin);
 			clock_gettime(CLOCK_THREAD_CPUTIME_ID, &task.t_thread_start);
 			t_exec = timespec_add(&task.t_thread_start, &task_rst.dl_exec);
-			busy_wait(&t_exec, &task.t_deadline);
+			if (!pure_overhead)
+			{
+				busy_wait(&t_exec, &task.t_deadline);
+			}
 			clock_gettime(CLOCK_THREAD_CPUTIME_ID, &task.t_thread_finish);
 			clock_gettime(CLOCK_REALTIME, &task.t_end);
 
@@ -257,6 +275,10 @@ int main(int argc, char* argv[])
 			clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &task.t_period, NULL);
 		}
 
+	}
+	else
+	{
+		printf("usage: rt_task <period>:<budget>:<exec> <duration> [<log_switch>]\n");
 	}
 	return 0;
 }
