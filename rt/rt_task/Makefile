@@ -1,13 +1,13 @@
-CFLAGS=-lrt
+CFLAGS=-lrt -g
 SRC=rt_task.c dl_syscalls.c
 OBJ=rt_task.o dl_syscalls.o
 rt_task: ${OBJ}
-	gcc ${OBJ} -o $@ ${CFLAGS}
+	gcc ${CFLAGS} ${OBJ} -o $@ 
 
 dl_syscalls.o:	dl_syscalls.h dl_syscalls.c
-	gcc -c dl_syscalls.c -o $@
+	gcc ${CFLAGS} -c dl_syscalls.c -o $@
 rt_task.o:	rt_task.h rt_task.c
-	gcc -c rt_task.c -o $@
+	gcc ${CFLAGS} -c rt_task.c -o $@
 clean:
 	rm -rf *.o rt_task
 install:
