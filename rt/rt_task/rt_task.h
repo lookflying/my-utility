@@ -26,10 +26,13 @@ typedef struct task_result
 	struct timespec dl_budget;
 	struct timespec dl_exec;
 	struct timespec t_exit;
+	struct timespec t_middle;
 	int cnt;
 	int correct_cnt;
 	int lack_cnt;
 	int miss_cnt;
+	int miss_cnt_after_middle;
+	int cnt_after_middle;
 	int64_t i_whole_thread_runtime; //total exec thread time, mainly in busy_wait
 	int64_t i_corrent_whole_thread_runtime;//exec thread time according to paramters
 	int64_t i_whole_duration;//wall clock duration of the whole program

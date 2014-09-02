@@ -24,7 +24,7 @@ void print_result_exit(struct timespec *t_now, task_data_t *p_task, task_result_
 	t_duration = timespec_sub(t_now, &p_rst->t_exit);
 	i_duration = timespec_to_nsec(&t_duration) + (int64_t)duration * 1E9;
 	p_rst->i_whole_duration = i_duration;
-	printf("===begin===\nstart=\t%lld ns\nend=\t%lld ns\nduration=\t%lld ns\ncnt=\t%d\ncorrect_cnt=\t%d\nmiss_cnt=\t%d\t%3.2f%%\nthread_runtime=\t%lld ns\ncorrect_thread_runtime=\t%lld ns\navg_thread_runtime=\t%lldns\t%3.2f%%\t%3.2f%%\t%3.2f%%\n",
+	printf("===begin===\nstart=\t%lld ns\nend=\t%lld ns\nduration=\t%lld ns\ncnt=\t%d\ncorrect_cnt=\t%d\nmiss_cnt=\t%d\t%3.2f%%\nmiss_cnt_after_middle=\t%d\t%3.2f%%\nthread_runtime=\t%lld ns\ncorrect_thread_runtime=\t%lld ns\navg_thread_runtime=\t%lldns\t%3.2f%%\t%3.2f%%\t%3.2f%%\n",
 						timespec_to_nsec(&p_rst->t_exit) - (int64_t)(duration * 1E9),
 						timespec_to_nsec(t_now),
 						i_duration,
@@ -32,6 +32,8 @@ void print_result_exit(struct timespec *t_now, task_data_t *p_task, task_result_
 						p_rst->correct_cnt,//(int64_t)(duration * 1E9) / timespec_to_nsec(&p_rst->dl_period),
 						p_rst->miss_cnt,
 						(double)p_rst->miss_cnt/(double)p_rst->cnt * 100.0,
+						p_rst->miss_cnt_after_middle,
+						(double)p_rst->miss_cnt_after_middle/(double)p_rst->cnt_after_middle * 100.0,
 						p_rst->i_whole_thread_runtime,
 						p_rst->i_corrent_whole_thread_runtime,
 						p_rst->i_whole_thread_runtime / p_rst->cnt,
@@ -93,16 +95,26 @@ static inline void process_log(task_data_t *p_task, task_result_t *p_rst)
 {
 	static int first = 1;
 	int64_t i_offset, i_diff, i_slack, i_thread_run, i_thread_remain;
+	int after_middle;
 	i_offset = timespec_to_nsec(&p_task->t_offset);
 	i_diff = timespec_to_nsec(&p_task->t_diff);
 	i_slack = timespec_to_nsec(&p_task->t_slack);
 	i_thread_run = timespec_to_nsec(&p_task->t_thread_run);
 	i_thread_remain = timespec_to_nsec(&p_task->t_thread_remain);
 
+	after_middle = timespec_lower(&p_rst->t_middle, &p_task->t_begin);
 	++p_rst->cnt;
+	if (after_middle)
+	{
+		++p_rst->cnt_after_middle;
+	}
 	if (i_thread_remain > 0)
 	{	
 		++p_rst->lack_cnt;
+		if (after_middle)
+		{
+			++p_rst->miss_cnt_after_middle;
+		}
 	}
 	if (i_slack < 0)
 	{
@@ -191,7 +203,9 @@ int main(int argc, char* argv[])
 		//duration is a must
 		duration = atoi(argv[2]);
 		clock_gettime(CLOCK_REALTIME, &task_rst.t_exit);
+		memcpy((void*)&task_rst.t_middle, (void*)&task_rst.t_exit, sizeof(task_rst.t_middle));
 		task_rst.t_exit.tv_sec = task_rst.t_exit.tv_sec + duration;
+		task_rst.t_middle.tv_sec = task_rst.t_middle.tv_sec + duration / 2;//set halfway timestamp
 
 		if (argc >= 4)
 		{
