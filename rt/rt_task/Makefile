@@ -1,8 +1,9 @@
-CFLAGS=-lrt -g
+LIBS=-lrt
+CFLAGS=-g
 SRC=rt_task.c dl_syscalls.c
 OBJ=rt_task.o dl_syscalls.o
 rt_task: ${OBJ}
-	gcc ${CFLAGS} ${OBJ} -o $@ 
+	gcc ${CFLAGS} ${OBJ} ${LIBS} -o $@ 
 
 dl_syscalls.o:	dl_syscalls.h dl_syscalls.c
 	gcc ${CFLAGS} -c dl_syscalls.c -o $@
