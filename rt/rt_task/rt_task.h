@@ -44,6 +44,16 @@ int64_t timespec_to_nsec(struct timespec *ts)
 	return ts->tv_sec * 1E9 + ts->tv_nsec;
 }
 
+struct timespec nsec_to_timespec(unsigned long long nsec)
+{
+	struct timespec ts;
+
+	ts.tv_sec = nsec / 1000000000;
+	ts.tv_nsec = nsec % 1000000000;
+	
+	return ts;
+}
+
 
 struct timespec usec_to_timespec(unsigned long usec)
 {
