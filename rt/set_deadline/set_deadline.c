@@ -73,6 +73,20 @@ int main(int argc, char* argv[])
 			exit(1);
 		}
 	}
+	else if (argc == 2)
+	{
+		pid = (pid_t)atoi(argv[1]);
+		ret = sched_getattr(pid, &dl_attr, sizeof(dl_attr), 0);
+		if (ret != 0)
+		{
+			perror("sched_getattr");
+			exit(1);
+		}
+		printf("deadline=%lld\tperiod=%lld\texec=%lld\n", 
+				dl_attr.sched_deadline,
+				dl_attr.sched_period,
+				dl_attr.sched_runtime);
+	}
 	else
 	{
 		printf("usage: set_deadline <pid> <period>:<exec>\n");
