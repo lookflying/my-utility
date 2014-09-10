@@ -90,6 +90,7 @@ int main(int argc, char* argv[])
 	else
 	{
 		printf("usage: set_deadline <pid> <period>:<exec>\n");
+		printf("usage: set_deadline <pid>\n");
 	}
 	return 0;
 }
