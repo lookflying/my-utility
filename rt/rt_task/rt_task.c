@@ -12,6 +12,7 @@
 #include <stdlib.h>
 
 static int g_log = 1;
+static int g_scheduler= 0;//0 for SCHED_DEADLINE, 1 for CFS, 2 for ...
 static int duration;
 static task_data_t task;
 static task_result_t task_rst;
@@ -212,6 +213,10 @@ int main(int argc, char* argv[])
 		{
 			g_log = atoi(argv[3]);
 		}
+		if (argc >= 5)
+		{
+			g_scheduler = atoi(argv[4]);	
+		}
 
 		//set deadline scheduling
 		pid = 0;
@@ -233,11 +238,24 @@ int main(int argc, char* argv[])
 	
 		task_rst.correct_cnt =(int)((int64_t)(duration * 1E9) / timespec_to_nsec(&task_rst.dl_period));
 		task_rst.i_corrent_whole_thread_runtime = (int64_t)task_rst.correct_cnt * timespec_to_nsec(&task_rst.dl_exec);
-
-		ret = sched_setattr(pid, &dl_attr, flags);
-		if (ret != 0)
+	
+		if (g_scheduler == 0)
 		{
-			perror("sched_setattr");
+			printf("using sched_deadline\n");
+			ret = sched_setattr(pid, &dl_attr, flags);
+			if (ret != 0)
+			{
+				perror("sched_setattr");
+				exit(1);
+			}
+		}
+		else if (g_scheduler == 1)
+		{
+			printf("using cfs\n");
+		}
+		else
+		{
+			printf("not implemented\n");
 			exit(1);
 		}
 #if 0
@@ -296,7 +314,7 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		printf("usage: rt_task <period>:<budget>:<exec> <duration> [<log_switch>]\n");
+		printf("usage: rt_task <period>:<budget>:<exec> <duration> [<log_switch>] [<scheduler>]\n");
 	}
 	return 0;
 }
